@@ -729,7 +729,7 @@
 <div
   bind:this={shellEl}
   class="shell relative flex flex-col items-start gap-2 p-2 select-none"
-  style="width: {historyOpen ? '828px' : '580px'};"
+  style="width: {historyOpen ? '828px' : '580px'}; min-height: {(modelMenuOpen || shotMenuOpen) ? '320px' : 'auto'};"
   ondragover={(e) => { e.preventDefault(); dragOver = true; }}
   ondragleave={() => (dragOver = false)}
   ondrop={onDrop}
@@ -925,62 +925,11 @@
       style="height: 380px;"
       transition:slide={{ duration: 240, easing: quintOut }}
     >
-      {#if historyOpen}
-        <aside
-          class="panel-glass history-panel flex flex-col overflow-hidden shrink-0"
-          style="width: 240px; margin-right: auto;"
-          transition:fly={{ x: -16, duration: 220, easing: cubicOut }}
-        >
-          <header class="flex items-center justify-between border-b border-white/8 px-3 py-2.5">
-            <span class="text-[10.5px] font-medium uppercase tracking-[0.10em] text-white/55">History</span>
-            <button
-              class="icon-btn"
-              style="width:22px;height:22px"
-              onclick={() => (historyOpen = false)}
-              aria-label="Close history"
-              title="Close (Ctrl+H)"
-            >
-              <Icon name="chevronLeft" size={12} />
-            </button>
-          </header>
-          <div class="subtle-scroll flex-1 overflow-y-auto p-2 space-y-1">
-            {#if sessions.length === 0}
-              <div class="px-2 py-6 text-center text-xs text-white/45">
-                No past chats yet.
-              </div>
-            {:else}
-              {#each sessions as s (s.id)}
-                <div class="group relative rounded-lg hover:bg-white/8 transition {currentSessionId === s.id ? 'bg-white/10' : ''}">
-                  <button
-                    class="flex w-full items-start gap-2 rounded-lg px-2 py-2 pr-9 text-left"
-                    onclick={() => loadSessionById(s.id)}
-                  >
-                    <div class="mt-0.5 text-white/40"><Icon name="chat" size={13} /></div>
-                    <div class="flex-1 min-w-0">
-                      <div class="truncate text-[12.5px] text-white/90">{s.title}</div>
-                      <div class="text-[10px] text-white/45">{relativeTime(s.updatedAt)} · {s.turns.length} turn{s.turns.length === 1 ? "" : "s"}</div>
-                    </div>
-                  </button>
-                  <button
-                    class="invisible absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded text-white/40 hover:bg-red-500/20 hover:text-red-200 group-hover:visible transition"
-                    onclick={(e) => removeSession(s.id, e)}
-                    title="Delete"
-                    aria-label="Delete session"
-                  >
-                    <Icon name="trash" size={12} />
-                  </button>
-                </div>
-              {/each}
-            {/if}
-          </div>
-        </aside>
-      {/if}
-
       {#if turns.length > 0}
         <main
           bind:this={scrollEl}
           class="panel-glass subtle-scroll relative overflow-y-auto p-4 shrink-0"
-          style="width: 564px; {historyOpen ? '' : 'margin-left: 0;'}"
+          style="width: 564px;"
           transition:fade={{ duration: 180 }}
         >
           <div class="absolute right-2 top-2 z-10 flex items-center gap-1">
@@ -1056,6 +1005,58 @@
           {/each}
         </main>
       {/if}
+
+      {#if historyOpen}
+        <aside
+          class="panel-glass history-panel flex flex-col overflow-hidden shrink-0"
+          style="width: 240px; margin-left: auto;"
+          transition:fly={{ x: 16, duration: 220, easing: cubicOut }}
+        >
+          <header class="flex items-center justify-between border-b border-white/8 px-3 py-2.5">
+            <span class="text-[10.5px] font-medium uppercase tracking-[0.10em] text-white/55">History</span>
+            <button
+              class="icon-btn"
+              style="width:22px;height:22px"
+              onclick={() => (historyOpen = false)}
+              aria-label="Close history"
+              title="Close (Ctrl+H)"
+            >
+              <Icon name="chevronRight" size={12} />
+            </button>
+          </header>
+          <div class="subtle-scroll flex-1 overflow-y-auto p-2 space-y-1">
+            {#if sessions.length === 0}
+              <div class="px-2 py-6 text-center text-xs text-white/45">
+                No past chats yet.
+              </div>
+            {:else}
+              {#each sessions as s (s.id)}
+                <div class="group relative rounded-lg hover:bg-white/8 transition {currentSessionId === s.id ? 'bg-white/10' : ''}">
+                  <button
+                    class="flex w-full items-start gap-2 rounded-lg px-2 py-2 pr-9 text-left"
+                    onclick={() => loadSessionById(s.id)}
+                  >
+                    <div class="mt-0.5 text-white/40"><Icon name="chat" size={13} /></div>
+                    <div class="flex-1 min-w-0">
+                      <div class="truncate text-[12.5px] text-white/90">{s.title}</div>
+                      <div class="text-[10px] text-white/45">{relativeTime(s.updatedAt)} · {s.turns.length} turn{s.turns.length === 1 ? "" : "s"}</div>
+                    </div>
+                  </button>
+                  <button
+                    class="invisible absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded text-white/40 hover:bg-red-500/20 hover:text-red-200 group-hover:visible transition"
+                    onclick={(e) => removeSession(s.id, e)}
+                    title="Delete"
+                    aria-label="Delete session"
+                  >
+                    <Icon name="trash" size={12} />
+                  </button>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        </aside>
+      {/if}
+
     </div>
   {/if}
 
@@ -1129,9 +1130,9 @@
 </div>
 
 <style>
-  /* Smooth width change when history toggles. */
+  /* Shell width changes instantly so Tauri doesn't spam OS window resizes. */
   .shell {
-    transition: width 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+    /* width transition removed to fix massive lag */
   }
   .md-body :global(pre) {
     background: rgba(0, 0, 0, 0.55);
