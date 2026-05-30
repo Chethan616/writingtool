@@ -40,7 +40,8 @@
         "focus": false,
         "visible": false,
         "resizable": false,
-        "shadow": false
+        "shadow": false,
+        "backgroundColor": "#00000000"
       }
     ],
     "security": {

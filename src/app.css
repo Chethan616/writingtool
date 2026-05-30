@@ -20,6 +20,7 @@
 html, body, #app {
   height: 100%;
   margin: 0;
+  background: transparent !important;
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;

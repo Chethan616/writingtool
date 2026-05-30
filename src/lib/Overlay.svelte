@@ -871,9 +871,9 @@
   {#if modelMenuOpen}
     <div
       class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
-      style="top: 60px; right: 120px; width: 220px;"
+      style="top: 60px; left: 240px; width: 220px;"
       data-popover="model"
-      transition:slide={{ duration: 200, easing: quintOut }}
+      transition:fly={{ y: -8, duration: 240, delay: 50, easing: backOut }}
     >
       <div class="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.10em] text-white/50">Model</div>
       {#each MODELS as m}
@@ -896,9 +896,9 @@
   {#if shotMenuOpen}
     <div
       class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
-      style="top: 60px; right: 70px; width: 220px;"
+      style="top: 60px; left: 290px; width: 220px;"
       data-popover="shot"
-      transition:slide={{ duration: 200, easing: quintOut }}
+      transition:fly={{ y: -8, duration: 240, delay: 50, easing: backOut }}
     >
       <div class="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.10em] text-white/50">Screenshot</div>
       <button class="menu-item w-full" onclick={fullScreenshot}>
@@ -923,7 +923,7 @@
     <div
       class="flex gap-2 relative w-full"
       style="height: 380px;"
-      transition:slide={{ duration: 320, easing: backOut }}
+      transition:fly={{ y: -16, duration: 320, easing: backOut }}
     >
       {#if turns.length > 0}
         <main
@@ -1010,7 +1010,7 @@
         <aside
           class="panel-glass history-panel flex flex-col overflow-hidden shrink-0"
           style="width: {turns.length > 0 ? '240px' : '564px'}; {turns.length > 0 ? 'margin-left: auto;' : ''}"
-          transition:fly={{ x: turns.length > 0 ? 20 : 0, y: turns.length > 0 ? 0 : -12, duration: 280, easing: backOut }}
+          transition:fly={{ x: turns.length > 0 ? 24 : 0, y: turns.length > 0 ? 0 : -16, duration: 320, delay: 50, easing: backOut }}
         >
           <header class="flex items-center justify-between border-b border-white/8 px-3 py-2.5">
             <span class="text-[10.5px] font-medium uppercase tracking-[0.10em] text-white/55">History</span>
@@ -1060,60 +1060,70 @@
     </div>
   {/if}
 
-  <!-- ════ Write/Typing panel — separated pill BELOW the overlay ════ -->
+  <!-- ════ Write/Typing panel — decoupled Dynamic Island ════ -->
   {#if writePhase !== "idle"}
     <div
-      class="float-glass body-panel flex items-center gap-3 rounded-2xl px-4 py-2.5 shrink-0"
-      style="width: 564px;"
-      transition:slide={{ duration: 220, easing: quintOut }}
+      class="float-glass body-panel grid items-center rounded-full shrink-0"
+      style="width: 564px; height: 60px;"
+      transition:fly={{ y: -16, duration: 320, delay: 50, easing: backOut }}
     >
-      {#if writePhase === "countdown"}
-        <div class="relative" aria-hidden="true">
-          <div class="resume-ring" style="--p: {countdownPct.toFixed(1)};">
-            <span class="resume-num">{countdownSec}</span>
-          </div>
+      {#key writePhase}
+        <div
+          class="col-start-1 row-start-1 flex items-center gap-4 px-5 w-full h-full"
+          in:fade={{ duration: 240, delay: 100, easing: quintOut }}
+          out:fade={{ duration: 200, easing: quintOut }}
+        >
+          {#if writePhase === "countdown"}
+            <div class="relative" aria-hidden="true">
+              <div class="resume-ring" style="--p: {countdownPct.toFixed(1)};">
+                <span class="resume-num">{countdownSec}</span>
+              </div>
+            </div>
+            <div class="flex-1 min-w-0 text-[13px] leading-tight">
+              <div class="font-semibold text-white">Writing in {countdownSec}s</div>
+              <div class="mt-0.5 text-[11px] text-white/55">Click the target answer box now.</div>
+            </div>
+            <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={cancelWrite}>Cancel</button>
+
+          {:else if writePhase === "resuming"}
+            <div class="relative" aria-hidden="true">
+              <div class="resume-ring" style="--p: {resumePct.toFixed(1)};">
+                <span class="resume-num">{resumeSec}</span>
+              </div>
+            </div>
+            <div class="flex-1 min-w-0 text-[13px] leading-tight">
+              <div class="font-semibold text-white">Resuming in {resumeSec}s</div>
+              <div class="mt-0.5 text-[11px] text-white/55">Put your cursor back in the target field.</div>
+            </div>
+            <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={cancelResume} title="Stay paused">Hold</button>
+            <button class="btn-danger rounded-full px-4 py-2 text-[11.5px] font-medium" onclick={cancelWrite}>Stop</button>
+
+          {:else}
+            <div class="grid h-[34px] w-[34px] place-items-center rounded-full bg-white/8 text-white/85 shadow-inner">
+              <Icon name={typingPaused ? "pause" : "keyboard"} size={14} fill={typingPaused ? "currentColor" : "none"} />
+            </div>
+            <div class="flex-1 min-w-0 text-[13px] leading-tight">
+              <div class="flex items-baseline justify-between gap-1.5 pr-2">
+                <span class="font-semibold text-white">{typingPaused ? "Paused" : "Typing"}{settings?.humanMode ? " · Human mode" : ""}</span>
+                <span class="tabular-nums text-[10.5px] font-medium tracking-wide text-white/40">{typingCur} / {typingTotal}</span>
+              </div>
+              <div class="mt-1.5 h-[4px] w-full overflow-hidden rounded-full bg-black/40 shadow-inner relative">
+                <div class="absolute top-0 left-0 h-full rounded-full {typingPaused ? 'bg-white/30' : 'bg-white/90 shadow-[0_0_8px_rgba(255,255,255,0.5)]'} transition-all duration-300 ease-out" style="width: {typingPct}%"></div>
+              </div>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={togglePause} title={typingPaused ? "Resume (Ctrl+Shift+P)" : "Pause (Ctrl+Shift+P)"}>
+                <Icon name={typingPaused ? "play" : "pause"} size={11} fill="currentColor" />
+                {typingPaused ? "Resume" : "Pause"}
+              </button>
+              <button class="btn-danger rounded-full px-4 py-2 text-[11.5px] font-medium" onclick={cancelWrite} title="Stop (Esc)">
+                <Icon name="stop" size={11} fill="currentColor" />
+                Stop
+              </button>
+            </div>
+          {/if}
         </div>
-        <div class="flex-1 min-w-0 text-[12.5px] leading-tight">
-          <div class="font-medium text-white">Writing in {countdownSec}s</div>
-          <div class="mt-0.5 text-[11px] text-white/55">Click the target answer box now.</div>
-        </div>
-        <button class="btn rounded-md px-3 py-1.5 text-xs" onclick={cancelWrite}>Cancel</button>
-      {:else if writePhase === "resuming"}
-        <div class="relative" aria-hidden="true">
-          <div class="resume-ring" style="--p: {resumePct.toFixed(1)};">
-            <span class="resume-num">{resumeSec}</span>
-          </div>
-        </div>
-        <div class="flex-1 min-w-0 text-[12.5px] leading-tight">
-          <div class="font-medium text-white">Resuming in {resumeSec}s</div>
-          <div class="mt-0.5 text-[11px] text-white/55">Put your cursor back in the target field.</div>
-        </div>
-        <button class="btn rounded-md px-3 py-1.5 text-xs" onclick={cancelResume} title="Stay paused">Hold</button>
-        <button class="btn-danger rounded-md px-3 py-1.5 text-xs font-medium" onclick={cancelWrite}>Stop</button>
-      {:else}
-        <div class="flex items-center gap-2">
-          <div class="grid h-8 w-8 place-items-center rounded-lg bg-white/8 text-white/85 border border-white/10">
-            <Icon name={typingPaused ? "pause" : "keyboard"} size={13} fill={typingPaused ? "currentColor" : "none"} />
-          </div>
-        </div>
-        <div class="flex-1 min-w-0 text-[12.5px] leading-tight">
-          <div class="flex items-baseline gap-1.5">
-            <span class="font-medium text-white">{typingPaused ? "Paused" : "Typing"}{settings?.humanMode ? " · human" : ""}</span>
-            <span class="tabular-nums text-white/55">{typingCur}/{typingTotal}</span>
-          </div>
-          <div class="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-white/8">
-            <div class="h-full {typingPaused ? 'bg-white/40' : 'bg-white/85'} transition-[width] duration-200" style="width: {typingPct}%"></div>
-          </div>
-        </div>
-        <button class="btn rounded-md px-3 py-1.5 text-xs" onclick={togglePause} title={typingPaused ? "Resume (Ctrl+Shift+P)" : "Pause (Ctrl+Shift+P)"}>
-          <Icon name={typingPaused ? "play" : "pause"} size={11} fill="currentColor" />
-          {typingPaused ? "Resume" : "Pause"}
-        </button>
-        <button class="btn-danger rounded-md px-3 py-1.5 text-xs font-medium" onclick={cancelWrite} title="Stop (Esc)">
-          <Icon name="stop" size={11} fill="currentColor" />
-          Stop
-        </button>
-      {/if}
+      {/key}
     </div>
   {/if}
 
