@@ -729,7 +729,7 @@
 <div
   bind:this={shellEl}
   class="shell relative flex flex-col items-start gap-2 p-2 select-none"
-  style="width: {historyOpen ? '828px' : '580px'}; min-height: {(modelMenuOpen || shotMenuOpen) ? '320px' : 'auto'};"
+  style="width: {historyOpen && turns.length > 0 ? '828px' : '580px'}; min-height: {(modelMenuOpen || shotMenuOpen) ? '320px' : 'auto'};"
   ondragover={(e) => { e.preventDefault(); dragOver = true; }}
   ondragleave={() => (dragOver = false)}
   ondrop={onDrop}
@@ -1009,8 +1009,8 @@
       {#if historyOpen}
         <aside
           class="panel-glass history-panel flex flex-col overflow-hidden shrink-0"
-          style="width: 240px; margin-left: auto;"
-          transition:fly={{ x: 16, duration: 220, easing: cubicOut }}
+          style="width: {turns.length > 0 ? '240px' : '564px'}; {turns.length > 0 ? 'margin-left: auto;' : ''}"
+          transition:fly={{ x: turns.length > 0 ? 16 : 0, y: turns.length > 0 ? 0 : -8, duration: 220, easing: cubicOut }}
         >
           <header class="flex items-center justify-between border-b border-white/8 px-3 py-2.5">
             <span class="text-[10.5px] font-medium uppercase tracking-[0.10em] text-white/55">History</span>
