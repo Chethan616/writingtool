@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
   import { fade, slide, fly } from "svelte/transition";
-  import { quintOut, cubicOut } from "svelte/easing";
+  import { quintOut, cubicOut, backOut } from "svelte/easing";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { open as openExternal } from "@tauri-apps/plugin-shell";
   import { marked } from "marked";
@@ -923,7 +923,7 @@
     <div
       class="flex gap-2 relative w-full"
       style="height: 380px;"
-      transition:slide={{ duration: 240, easing: quintOut }}
+      transition:slide={{ duration: 320, easing: backOut }}
     >
       {#if turns.length > 0}
         <main
@@ -1010,7 +1010,7 @@
         <aside
           class="panel-glass history-panel flex flex-col overflow-hidden shrink-0"
           style="width: {turns.length > 0 ? '240px' : '564px'}; {turns.length > 0 ? 'margin-left: auto;' : ''}"
-          transition:fly={{ x: turns.length > 0 ? 16 : 0, y: turns.length > 0 ? 0 : -8, duration: 220, easing: cubicOut }}
+          transition:fly={{ x: turns.length > 0 ? 20 : 0, y: turns.length > 0 ? 0 : -12, duration: 280, easing: backOut }}
         >
           <header class="flex items-center justify-between border-b border-white/8 px-3 py-2.5">
             <span class="text-[10.5px] font-medium uppercase tracking-[0.10em] text-white/55">History</span>
