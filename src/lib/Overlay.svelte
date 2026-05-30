@@ -728,8 +728,8 @@
 
 <div
   bind:this={shellEl}
-  class="shell relative flex flex-col gap-2 p-2 select-none"
-  style="width: {historyOpen ? '820px' : '580px'};"
+  class="shell relative flex flex-col items-start gap-2 p-2 select-none"
+  style="width: {historyOpen ? '828px' : '580px'};"
   ondragover={(e) => { e.preventDefault(); dragOver = true; }}
   ondragleave={() => (dragOver = false)}
   ondrop={onDrop}
@@ -739,7 +739,7 @@
   <!-- ════ Pill bar (taller, narrower) ════ -->
   <div
     class="pill-glass relative flex items-center gap-2 rounded-2xl px-3.5 py-3 drag {recording ? 'recording-ring' : ''}"
-    style={recording ? `--rec-peak: ${peak.toFixed(3)};` : ''}
+    style="width: 564px; {recording ? `--rec-peak: ${peak.toFixed(3)};` : ''}"
   >
     <span class="h-1.5 w-1.5 shrink-0 rounded-full {recording ? 'dot-error' : (activeRequest ? 'dot-warn' : 'dot-ok')}"></span>
 
@@ -867,9 +867,11 @@
   </div>
 
   <!-- ════ Inline drawers (grow the window, never clip) ════ -->
+  <!-- ════ Floating Dropdown Menus ════ -->
   {#if modelMenuOpen}
     <div
-      class="float-glass body-panel rounded-2xl p-1.5"
+      class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
+      style="top: 60px; right: 120px; width: 220px;"
       data-popover="model"
       transition:slide={{ duration: 200, easing: quintOut }}
     >
@@ -882,7 +884,7 @@
           <span class="grid h-4 w-4 place-items-center text-white/80">
             {#if settings?.model === m.id}<Icon name="check" size={12} />{/if}
           </span>
-          <span class="flex-1 min-w-0">
+          <span class="flex-1 min-w-0 text-left">
             <span class="block leading-tight text-white">{m.label}</span>
             <span class="sub">{m.sub}</span>
           </span>
@@ -893,21 +895,22 @@
 
   {#if shotMenuOpen}
     <div
-      class="float-glass body-panel rounded-2xl p-1.5"
+      class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
+      style="top: 60px; right: 70px; width: 220px;"
       data-popover="shot"
       transition:slide={{ duration: 200, easing: quintOut }}
     >
       <div class="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.10em] text-white/50">Screenshot</div>
       <button class="menu-item w-full" onclick={fullScreenshot}>
         <Icon name="monitor" size={13} />
-        <span class="flex-1 min-w-0">
+        <span class="flex-1 min-w-0 text-left">
           <span class="block leading-tight text-white">Full screen</span>
           <span class="sub">Capture entire screen · Ctrl+Shift+S</span>
         </span>
       </button>
       <button class="menu-item w-full" onclick={regionScreenshot}>
         <Icon name="crop" size={13} />
-        <span class="flex-1 min-w-0">
+        <span class="flex-1 min-w-0 text-left">
           <span class="block leading-tight text-white">Partial screenshot</span>
           <span class="sub">Drag to select region · Ctrl+Shift+R</span>
         </span>
@@ -915,16 +918,17 @@
     </div>
   {/if}
 
-  <!-- ════ Body: history + answers ════ -->
+  <!-- ════ Body: history + answers (Decoupled layout) ════ -->
   {#if historyOpen || turns.length > 0}
     <div
-      class="flex gap-2 body-panel"
+      class="flex gap-2 relative w-full"
       style="height: 380px;"
       transition:slide={{ duration: 240, easing: quintOut }}
     >
       {#if historyOpen}
         <aside
-          class="panel-glass history-panel flex w-64 shrink-0 flex-col overflow-hidden"
+          class="panel-glass history-panel flex flex-col overflow-hidden shrink-0"
+          style="width: 240px; margin-right: auto;"
           transition:fly={{ x: -16, duration: 220, easing: cubicOut }}
         >
           <header class="flex items-center justify-between border-b border-white/8 px-3 py-2.5">
@@ -975,7 +979,8 @@
       {#if turns.length > 0}
         <main
           bind:this={scrollEl}
-          class="panel-glass subtle-scroll relative flex-1 overflow-y-auto p-4"
+          class="panel-glass subtle-scroll relative overflow-y-auto p-4 shrink-0"
+          style="width: 564px; {historyOpen ? '' : 'margin-left: 0;'}"
           transition:fade={{ duration: 180 }}
         >
           <div class="absolute right-2 top-2 z-10 flex items-center gap-1">
@@ -1057,7 +1062,8 @@
   <!-- ════ Write/Typing panel — separated pill BELOW the overlay ════ -->
   {#if writePhase !== "idle"}
     <div
-      class="float-glass body-panel flex items-center gap-3 rounded-2xl px-4 py-2.5"
+      class="float-glass body-panel flex items-center gap-3 rounded-2xl px-4 py-2.5 shrink-0"
+      style="width: 564px;"
       transition:slide={{ duration: 220, easing: quintOut }}
     >
       {#if writePhase === "countdown"}
