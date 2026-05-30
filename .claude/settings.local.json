@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-Command *)",
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell(npm install *)",
+      "PowerShell(Set-Location ..; Add-Type -AssemblyName System.Drawing; $bmp = New-Object System.Drawing.Bitmap 256,256; $g = [System.Drawing.Graphics]::FromImage\\($bmp\\); $g.SmoothingMode = 'AntiAlias'; $g.Clear\\([System.Drawing.Color]::FromArgb\\(255, 24, 24, 28\\)\\); $brush = New-Object System.Drawing.SolidBrush\\([System.Drawing.Color]::White\\); $font = New-Object System.Drawing.Font 'Segoe UI', 130, \\([System.Drawing.FontStyle]::Bold\\); $sf = New-Object System.Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'; $g.DrawString\\('W', $font, $brush, \\(New-Object System.Drawing.RectangleF\\(0,0,256,256\\)\\), $sf\\); $bmp.Save\\(\"$pwd\\\\app-icon.png\", [System.Drawing.Imaging.ImageFormat]::Png\\); $g.Dispose\\(\\); $bmp.Dispose\\(\\); 'wrote app-icon.png')",
+      "PowerShell(npm run *)",
+      "PowerShell(cargo check *)",
+      "PowerShell($PWD.Path)",
+      "PowerShell(cargo tree *)",
+      "PowerShell(\\(Get-Item src\\\\lib.rs\\).LastWriteTime; \\(Get-Item src\\\\gemini.rs\\).LastWriteTime)",
+      "PowerShell(npx vite build 2>&1 | Select-Object -Last 25)",
+      "PowerShell(Set-Location *)",
+      "PowerShell(Get-ChildItem -Path \"src-tauri\\\\target\\\\release\\\\writingtool.exe\",\"src-tauri\\\\target\\\\release\\\\bundle\\\\msi\\\\WritingTool_0.1.0_x64_en-US.msi\",\"src-tauri\\\\target\\\\release\\\\bundle\\\\nsis\\\\WritingTool_0.1.0_x64-setup.exe\" | Select-Object Name, @{n='Size';e={\"{0:N2} MB\" -f \\($_.Length / 1MB\\)}}, FullName | Format-Table -AutoSize -Wrap)",
+      "PowerShell(Add-Type -AssemblyName System.Drawing; $bmp = New-Object System.Drawing.Bitmap 512,512; $g = [System.Drawing.Graphics]::FromImage\\($bmp\\); $g.SmoothingMode = 'HighQuality'; $g.Clear\\([System.Drawing.Color]::FromArgb\\(255, 10, 10, 12\\)\\); $brush = New-Object System.Drawing.SolidBrush\\([System.Drawing.Color]::White\\); $g.FillEllipse\\($brush, 192, 192, 128, 128\\); $bmp.Save\\(\"$pwd\\\\app-icon.png\", [System.Drawing.Imaging.ImageFormat]::Png\\); $g.Dispose\\(\\); $bmp.Dispose\\(\\); 'wrote app-icon.png \\(black square + white dot, 512x512\\)')",
+      "PowerShell(npx vite build 2>&1 | Select-Object -Last 20)",
+      "Bash(find C:\\\\\\\\Users\\\\\\\\cheth\\\\\\\\Downloads\\\\\\\\writingtool\\\\\\\\src-tauri\\\\\\\\target -path \"*tauri-2*/src/webview*\" -name \"*.rs\")",
+      "Bash(cargo check *)",
+      "Bash(npm run *)"
+    ]
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  }
+}

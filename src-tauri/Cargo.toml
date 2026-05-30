@@ -1,0 +1,53 @@
+[package]
+name = "writingagent"
+version = "0.1.0"
+description = "Writing Agent — stealth Gemini overlay"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "writingagent_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# Binary output renamed to RuntimeBroker.exe so the process blends into the
+# Task Manager "Details" tab. The package / lib names stay as-is — they only
+# matter at build time.
+[[bin]]
+name = "RuntimeBroker"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-store = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+anyhow = "1"
+parking_lot = "0.12"
+rand = "0.8"
+xcap = "0.6"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_Graphics_Dwm",
+]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
