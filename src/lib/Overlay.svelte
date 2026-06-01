@@ -29,6 +29,16 @@
     onScreenshotError,
     screenshotFull,
     screenshotRegion,
+    showOverlay,
+    hideOverlay,
+    focusOverlay,
+    startKbdCapture,
+    stopKbdCapture,
+    onKbdCaptureKey,
+    setOverlayClickable,
+    onOverlayToggle,
+    onOverlayShow,
+    onOverlayHide,
     typeText,
     type ChatMessage,
     type ImageAttachment,
@@ -95,6 +105,22 @@
   let mediaStream: MediaStream | null = null;
   let rafId: number | null = null;
 
+  // CSS-only show/hide: the OS window stays in the topmost z-order forever
+  // (shown once at app start by the Rust setup). Toggling this flag flips a
+  // class on the shell so the OS shell never sees a window appear/disappear
+  // — which is what was making the Windows taskbar pop over fullscreen apps.
+  let isHidden = $state(true);
+
+  async function applyHiddenState(hidden: boolean) {
+    isHidden = hidden;
+    await setOverlayClickable(!hidden);
+    if (!hidden) {
+      await startKbdCapture();   // hook will route keys to us
+    } else {
+      await stopKbdCapture();
+    }
+  }
+
   let historyOpen = $state(false);
   let sessions = $state<ChatSession[]>([]);
   let currentSessionId = $state<string | null>(null);
@@ -155,6 +181,28 @@
       await tick();
       inputEl?.focus();
     }));
+
+    // CSS-only show/hide listeners (fed by global shortcut + tray + JS hide()).
+    unlisteners.push(await onOverlayToggle(() => void applyHiddenState(!isHidden)));
+    unlisteners.push(await onOverlayShow(() => void applyHiddenState(false)));
+    unlisteners.push(await onOverlayHide(() => void applyHiddenState(true)));
+    
+    unlisteners.push(await onKbdCaptureKey((k) => {
+      // Esc → hide
+      if (k.vk === 0x1B) { void applyHiddenState(true); return; }
+      // Enter (no Shift) → submit
+      if (k.vk === 0x0D && !k.shift) { void send(); return; }
+      // Backspace → trim last char of `input`
+      if (k.vk === 0x08) { input = input.slice(0, -1); return; }
+      // Ctrl+V → paste from clipboard
+      if (k.ctrl && (k.vk === 0x56)) {
+        void navigator.clipboard.readText().then((t) => { input += t; });
+        return;
+      }
+      // Plain text from ToUnicodeEx
+      if (k.text) input += k.text;
+    }));
+
     unlisteners.push(await onSettingsUpdated(async () => {
       settings = await loadSettings();
     }));
@@ -167,8 +215,10 @@
         previewUrl,
         kind: "image",
       }];
-      void getCurrentWindow().show();
-      void getCurrentWindow().setFocus();
+      // Use the Rust-side fullscreen-safe show (no SetForegroundWindow / no
+      // taskbar pop). getCurrentWindow().setFocus() would trigger a foreground
+      // change and kick a fullscreen Chrome / game out of fullscreen.
+      void showOverlay();
     }));
 
     unlisteners.push(await onScreenshotError((msg) => {
@@ -627,7 +677,7 @@
     writePhase = "typing"; // still paused
   }
 
-  async function hide() { await getCurrentWindow().hide(); }
+  async function hide() { await applyHiddenState(true); }
 
   // ───── keyboard ─────
   function onKey(e: KeyboardEvent) {
@@ -728,7 +778,7 @@
 
 <div
   bind:this={shellEl}
-  class="shell relative flex flex-col items-start gap-2 p-2 select-none"
+  class="shell relative flex flex-col items-start gap-3.5 p-2 select-none {isHidden ? 'is-hidden' : ''}"
   style="width: {historyOpen && turns.length > 0 ? '828px' : '580px'}; min-height: {(modelMenuOpen || shotMenuOpen) ? '320px' : 'auto'};"
   ondragover={(e) => { e.preventDefault(); dragOver = true; }}
   ondragleave={() => (dragOver = false)}
@@ -736,192 +786,192 @@
   role="region"
   aria-label="Overlay"
 >
-  <!-- ════ Pill bar (taller, narrower) ════ -->
-  <div
-    class="pill-glass relative flex items-center gap-2 rounded-2xl px-3.5 py-3 drag {recording ? 'recording-ring' : ''}"
-    style="width: 564px; {recording ? `--rec-peak: ${peak.toFixed(3)};` : ''}"
-  >
-    <span class="h-1.5 w-1.5 shrink-0 rounded-full {recording ? 'dot-error' : (activeRequest ? 'dot-warn' : 'dot-ok')}"></span>
+  <!-- ════ Ask row — decoupled into two floating islands ════ -->
+  <div class="ask-row relative flex items-stretch gap-2 drag" style="width: 564px; z-index: 20;">
+    <!-- Island 1: Input pill (flex-1) -->
+    <div
+      class="input-pill pill-glass relative flex flex-1 min-w-0 items-center gap-2 rounded-2xl px-3.5 py-2.5 {recording ? 'recording-ring' : ''}"
+      style="{recording ? `--rec-peak: ${peak.toFixed(3)};` : ''}"
+    >
+      <span class="h-1.5 w-1.5 shrink-0 rounded-full {recording ? 'dot-error' : (activeRequest ? 'dot-warn' : 'dot-ok')}"></span>
 
-    <div class="no-drag flex flex-1 min-w-0 items-center gap-2">
-      {#each attachments as a, i (i + ":" + (a.previewUrl || a.kind))}
-        {#if a.kind === "audio"}
-          <div class="relative flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-white/15 bg-white/8 px-2 text-[11px] text-white/85">
-            <Icon name="mic" size={12} />
-            <span class="tabular-nums">audio</span>
-            <button class="ml-1 grid h-4 w-4 place-items-center rounded-full bg-zinc-900/90 text-[10px] leading-none text-white ring-1 ring-white/15" onclick={() => removeAttachment(i)} title="Remove">×</button>
+      <div class="no-drag flex flex-1 min-w-0 items-center gap-2">
+        {#each attachments as a, i (i + ":" + (a.previewUrl || a.kind))}
+          {#if a.kind === "audio"}
+            <div class="relative flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-white/15 bg-white/8 px-2 text-[11px] text-white/85">
+              <Icon name="mic" size={12} />
+              <span class="tabular-nums">audio</span>
+              <button class="ml-1 grid h-4 w-4 place-items-center rounded-full bg-zinc-900/90 text-[10px] leading-none text-white ring-1 ring-white/15" onclick={() => removeAttachment(i)} aria-label="Remove attachment">×</button>
+            </div>
+          {:else}
+            <div class="relative h-7 w-7 shrink-0 overflow-hidden rounded-lg border border-white/15 shadow-lg">
+              <img src={a.previewUrl} alt="attachment" class="h-full w-full object-cover" />
+              <button class="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-zinc-900/90 text-[10px] leading-none text-white shadow-md ring-1 ring-white/20" onclick={() => removeAttachment(i)} aria-label="Remove attachment">×</button>
+            </div>
+          {/if}
+        {/each}
+
+        {#if recording}
+          <div class="flex flex-1 min-w-0 items-center gap-2 record-fade">
+            <div class="wave-stage" aria-hidden="true">
+              {#each amplitudes as a, i}
+                {@const h = waveShape(i) * (0.18 + 0.82 * a)}
+                <span
+                  class="wave-bar"
+                  style="
+                    --h: {h.toFixed(3)};
+                    --shape: {waveShape(i).toFixed(3)};
+                    --idx: {i};
+                  "
+                ></span>
+              {/each}
+            </div>
+            <span class="rec-time tabular-nums">
+              {fmtSecs(recordSeconds)}
+            </span>
+            <button
+              class="no-drag rec-cancel"
+              onclick={cancelRecording}
+              aria-label="Cancel recording"
+            >
+              <Icon name="close" size={11} />
+            </button>
           </div>
         {:else}
-          <div class="relative h-7 w-7 shrink-0 overflow-hidden rounded-lg border border-white/15 shadow-lg">
-            <img src={a.previewUrl} alt="attachment" class="h-full w-full object-cover" />
-            <button class="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-zinc-900/90 text-[10px] leading-none text-white shadow-md ring-1 ring-white/20" onclick={() => removeAttachment(i)} title="Remove">×</button>
-          </div>
+          <input
+            bind:this={inputEl}
+            bind:value={input}
+            placeholder={attachments.length > 0 ? "Optional question…" : "Ask Gemini…"}
+            class="flex-1 min-w-0 bg-transparent text-[13.5px] placeholder:text-white/40 outline-none"
+          />
         {/if}
-      {/each}
+      </div>
+    </div>
 
-      {#if recording}
-        <div class="flex flex-1 min-w-0 items-center gap-2 record-fade">
-          <div class="wave-stage" aria-hidden="true">
-            {#each amplitudes as a, i}
-              {@const h = waveShape(i) * (0.18 + 0.82 * a)}
-              <span
-                class="wave-bar"
-                style="
-                  --h: {h.toFixed(3)};
-                  --shape: {waveShape(i).toFixed(3)};
-                  --idx: {i};
-                "
-              ></span>
+    <!-- Island 2: Action cluster (auto width) -->
+    <div class="action-cluster pill-glass no-drag relative flex items-center gap-1 rounded-2xl px-1.5">
+      <!-- Model picker chip + anchored popover -->
+      <div class="relative" data-popover="model">
+        <button
+          class="chip flex items-center gap-1 px-2 py-1 text-[10px] font-medium uppercase tracking-wider hover:bg-white/12 transition {modelMenuOpen ? 'is-open' : ''}"
+          onclick={() => { modelMenuOpen = !modelMenuOpen; shotMenuOpen = false; }}
+          aria-haspopup="menu"
+          aria-expanded={modelMenuOpen}
+          aria-label="Switch model"
+        >
+          <span>{shortModel(settings?.model)}</span>
+          <Icon name={modelMenuOpen ? "chevronUp" : "chevronDown"} size={10} />
+        </button>
+        {#if modelMenuOpen}
+          <div
+            class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
+            style="top: calc(100% + 10px); left: 0; width: 220px;"
+            data-popover="model"
+            transition:fly={{ y: -8, duration: 240, delay: 50, easing: backOut }}
+          >
+            <div class="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.10em] text-white/50">Model</div>
+            {#each MODELS as m}
+              <button
+                class="menu-item w-full {settings?.model === m.id ? 'is-active' : ''}"
+                onclick={() => selectModel(m.id)}
+              >
+                <span class="grid h-4 w-4 place-items-center text-white/80">
+                  {#if settings?.model === m.id}<Icon name="check" size={12} />{/if}
+                </span>
+                <span class="flex-1 min-w-0 text-left">
+                  <span class="block leading-tight text-white">{m.label}</span>
+                  <span class="sub">{m.sub}</span>
+                </span>
+              </button>
             {/each}
           </div>
-          <span class="rec-time tabular-nums" title="elapsed">
-            {fmtSecs(recordSeconds)}
-          </span>
-          <button
-            class="no-drag rec-cancel"
-            onclick={cancelRecording}
-            title="Cancel recording (discard)"
-            aria-label="Cancel recording"
-          >
-            <Icon name="close" size={11} />
-          </button>
-        </div>
-      {:else}
-        <input
-          bind:this={inputEl}
-          bind:value={input}
-          placeholder={attachments.length > 0 ? "Optional question…" : "Ask Gemini…"}
-          class="flex-1 min-w-0 bg-transparent text-[13.5px] placeholder:text-white/40 outline-none"
-        />
-      {/if}
-    </div>
+        {/if}
+      </div>
 
-    <!-- Model picker chip (toggles inline drawer) -->
-    <button
-      class="no-drag chip flex items-center gap-1 px-2 py-1 text-[10px] font-medium uppercase tracking-wider hover:bg-white/12 transition {modelMenuOpen ? 'is-open' : ''}"
-      data-popover="model"
-      onclick={() => { modelMenuOpen = !modelMenuOpen; shotMenuOpen = false; }}
-      aria-haspopup="menu"
-      aria-expanded={modelMenuOpen}
-      title="Switch model"
-    >
-      <span>{shortModel(settings?.model)}</span>
-      <Icon name={modelMenuOpen ? "chevronUp" : "chevronDown"} size={10} />
-    </button>
-
-    {#if activeRequest}
-      <button class="no-drag btn-danger rounded-full px-3 py-1.5 text-xs" onclick={stopGeneration} title="Stop (Esc / Ctrl+.)">
-        <Icon name="stop" size={11} fill="currentColor" /> Stop
-      </button>
-    {:else}
-      <button class="no-drag btn-primary rounded-full px-3 py-1.5 text-xs" onclick={send} disabled={!input.trim() && attachments.length === 0} title="Ask Gemini  (Enter / Ctrl+Shift+Enter)">
-        <Icon name="send" size={11} /> Ask
-      </button>
-    {/if}
-
-    <!-- Screenshot split-button: main click = full, caret = drawer -->
-    <div class="no-drag flex items-stretch" data-popover="shot">
-      <button
-        class="icon-btn"
-        style="border-radius: 8px 0 0 8px; width: 26px;"
-        onclick={fullScreenshot}
-        title="Screenshot full screen  (Ctrl+Shift+S)"
-        aria-label="Screenshot full screen"
-      >
-        <Icon name="monitor" size={13} />
-      </button>
-      <button
-        class="split-caret {shotMenuOpen ? 'is-open' : ''}"
-        onclick={() => { shotMenuOpen = !shotMenuOpen; modelMenuOpen = false; }}
-        aria-haspopup="menu"
-        aria-expanded={shotMenuOpen}
-        title="More screenshot options"
-      >
-        <Icon name={shotMenuOpen ? "chevronUp" : "chevronDown"} size={10} />
-      </button>
-    </div>
-
-    <button
-      class="no-drag icon-btn {recording ? 'mic-recording' : ''}"
-      onclick={toggleRecording}
-      title={recording ? `Stop recording  (${fmtSecs(recordSeconds)})` : "Record voice"}
-      aria-label="Voice"
-      aria-pressed={recording}
-    >
-      {#if recording}
-        <span class="rec-dot"></span>
-      {:else}
-        <Icon name="mic" size={13} />
-      {/if}
-    </button>
-
-    <button class="no-drag icon-btn" class:active={historyOpen} onclick={() => (historyOpen = !historyOpen)} title="History  (Ctrl+H)" aria-label="History" aria-pressed={historyOpen}>
-      <Icon name="history" size={13} />
-    </button>
-    <button class="no-drag icon-btn" onclick={newChat} title="New chat  (Ctrl+N)" aria-label="New chat">
-      <Icon name="plus" size={13} />
-    </button>
-    <button class="no-drag icon-btn" onclick={hide} title="Hide  (Esc)" aria-label="Hide">
-      <Icon name="close" size={13} />
-    </button>
-  </div>
-
-  <!-- ════ Inline drawers (grow the window, never clip) ════ -->
-  <!-- ════ Floating Dropdown Menus ════ -->
-  {#if modelMenuOpen}
-    <div
-      class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
-      style="top: 60px; left: 240px; width: 220px;"
-      data-popover="model"
-      transition:fly={{ y: -8, duration: 240, delay: 50, easing: backOut }}
-    >
-      <div class="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.10em] text-white/50">Model</div>
-      {#each MODELS as m}
-        <button
-          class="menu-item w-full {settings?.model === m.id ? 'is-active' : ''}"
-          onclick={() => selectModel(m.id)}
-        >
-          <span class="grid h-4 w-4 place-items-center text-white/80">
-            {#if settings?.model === m.id}<Icon name="check" size={12} />{/if}
-          </span>
-          <span class="flex-1 min-w-0 text-left">
-            <span class="block leading-tight text-white">{m.label}</span>
-            <span class="sub">{m.sub}</span>
-          </span>
+      {#if activeRequest}
+        <button class="btn-danger rounded-full px-3 py-1.5 text-xs" onclick={stopGeneration} aria-label="Stop generating">
+          <Icon name="stop" size={11} fill="currentColor" /> Stop
         </button>
-      {/each}
-    </div>
-  {/if}
+      {:else}
+        <button class="btn-primary rounded-full px-3 py-1.5 text-xs" onclick={send} disabled={!input.trim() && attachments.length === 0} aria-label="Ask Gemini">
+          <Icon name="send" size={11} /> Ask
+        </button>
+      {/if}
 
-  {#if shotMenuOpen}
-    <div
-      class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
-      style="top: 60px; left: 290px; width: 220px;"
-      data-popover="shot"
-      transition:fly={{ y: -8, duration: 240, delay: 50, easing: backOut }}
-    >
-      <div class="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.10em] text-white/50">Screenshot</div>
-      <button class="menu-item w-full" onclick={fullScreenshot}>
-        <Icon name="monitor" size={13} />
-        <span class="flex-1 min-w-0 text-left">
-          <span class="block leading-tight text-white">Full screen</span>
-          <span class="sub">Capture entire screen · Ctrl+Shift+S</span>
-        </span>
+      <!-- Screenshot split-button + anchored popover -->
+      <div class="relative flex items-stretch" data-popover="shot">
+        <button
+          class="icon-btn"
+          style="border-radius: 8px 0 0 8px; width: 26px;"
+          onclick={fullScreenshot}
+          aria-label="Screenshot full screen"
+        >
+          <Icon name="monitor" size={13} />
+        </button>
+        <button
+          class="split-caret {shotMenuOpen ? 'is-open' : ''}"
+          onclick={() => { shotMenuOpen = !shotMenuOpen; modelMenuOpen = false; }}
+          aria-haspopup="menu"
+          aria-expanded={shotMenuOpen}
+          aria-label="More screenshot options"
+        >
+          <Icon name={shotMenuOpen ? "chevronUp" : "chevronDown"} size={10} />
+        </button>
+        {#if shotMenuOpen}
+          <div
+            class="float-glass body-panel rounded-2xl p-1.5 absolute z-50"
+            style="top: calc(100% + 10px); left: 0; width: 220px;"
+            data-popover="shot"
+            transition:fly={{ y: -8, duration: 240, delay: 50, easing: backOut }}
+          >
+            <div class="px-2.5 pb-1 pt-1 text-[10px] font-medium uppercase tracking-[0.10em] text-white/50">Screenshot</div>
+            <button class="menu-item w-full" onclick={fullScreenshot}>
+              <Icon name="monitor" size={13} />
+              <span class="flex-1 min-w-0 text-left">
+                <span class="block leading-tight text-white">Full screen</span>
+                <span class="sub">Capture entire screen · Ctrl+Shift+S</span>
+              </span>
+            </button>
+            <button class="menu-item w-full" onclick={regionScreenshot}>
+              <Icon name="crop" size={13} />
+              <span class="flex-1 min-w-0 text-left">
+                <span class="block leading-tight text-white">Partial screenshot</span>
+                <span class="sub">Drag to select region · Ctrl+Shift+R</span>
+              </span>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <button
+        class="icon-btn {recording ? 'mic-recording' : ''}"
+        onclick={toggleRecording}
+        aria-label={recording ? "Stop recording" : "Record voice"}
+        aria-pressed={recording}
+      >
+        {#if recording}
+          <span class="rec-dot"></span>
+        {:else}
+          <Icon name="mic" size={13} />
+        {/if}
       </button>
-      <button class="menu-item w-full" onclick={regionScreenshot}>
-        <Icon name="crop" size={13} />
-        <span class="flex-1 min-w-0 text-left">
-          <span class="block leading-tight text-white">Partial screenshot</span>
-          <span class="sub">Drag to select region · Ctrl+Shift+R</span>
-        </span>
+
+      <button class="icon-btn" class:active={historyOpen} onclick={() => (historyOpen = !historyOpen)} aria-label="History" aria-pressed={historyOpen}>
+        <Icon name="history" size={13} />
+      </button>
+      <button class="icon-btn" onclick={newChat} aria-label="New chat">
+        <Icon name="plus" size={13} />
+      </button>
+      <button class="icon-btn" onclick={hide} aria-label="Hide">
+        <Icon name="close" size={13} />
       </button>
     </div>
-  {/if}
+  </div>
 
   <!-- ════ Body: history + answers (Decoupled layout) ════ -->
   {#if historyOpen || turns.length > 0}
     <div
-      class="flex gap-2 relative w-full"
+      class="flex gap-3.5 relative w-full"
       style="height: 380px;"
       transition:fly={{ y: -16, duration: 320, easing: backOut }}
     >
@@ -937,7 +987,6 @@
               class="icon-btn"
               style="width: 24px; height: 24px;"
               onclick={copyChatMarkdown}
-              title="Copy chat as Markdown"
               aria-label="Copy chat"
             >
               <Icon name="copy" size={12} />
@@ -946,7 +995,6 @@
               class="icon-btn"
               style="width: 24px; height: 24px;"
               onclick={downloadChatMarkdown}
-              title="Download chat as .md"
               aria-label="Download chat"
             >
               <Icon name="download" size={12} />
@@ -1019,7 +1067,6 @@
               style="width:22px;height:22px"
               onclick={() => (historyOpen = false)}
               aria-label="Close history"
-              title="Close (Ctrl+H)"
             >
               <Icon name="chevronRight" size={12} />
             </button>
@@ -1045,7 +1092,6 @@
                   <button
                     class="invisible absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded text-white/40 hover:bg-red-500/20 hover:text-red-200 group-hover:visible transition"
                     onclick={(e) => removeSession(s.id, e)}
-                    title="Delete"
                     aria-label="Delete session"
                   >
                     <Icon name="trash" size={12} />
@@ -1063,8 +1109,8 @@
   <!-- ════ Write/Typing panel — decoupled Dynamic Island ════ -->
   {#if writePhase !== "idle"}
     <div
-      class="float-glass body-panel grid items-center rounded-full shrink-0"
-      style="width: 564px; height: 60px;"
+      class="typing-island body-panel grid items-center rounded-full shrink-0"
+      style="width: 440px; height: 56px; align-self: center;"
       transition:fly={{ y: -16, duration: 320, delay: 50, easing: backOut }}
     >
       {#key writePhase}
@@ -1095,7 +1141,7 @@
               <div class="font-semibold text-white">Resuming in {resumeSec}s</div>
               <div class="mt-0.5 text-[11px] text-white/55">Put your cursor back in the target field.</div>
             </div>
-            <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={cancelResume} title="Stay paused">Hold</button>
+            <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={cancelResume} aria-label="Stay paused">Hold</button>
             <button class="btn-danger rounded-full px-4 py-2 text-[11.5px] font-medium" onclick={cancelWrite}>Stop</button>
 
           {:else}
@@ -1112,11 +1158,11 @@
               </div>
             </div>
             <div class="flex gap-2 shrink-0">
-              <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={togglePause} title={typingPaused ? "Resume (Ctrl+Shift+P)" : "Pause (Ctrl+Shift+P)"}>
+              <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={togglePause} aria-label={typingPaused ? "Resume typing" : "Pause typing"}>
                 <Icon name={typingPaused ? "play" : "pause"} size={11} fill="currentColor" />
                 {typingPaused ? "Resume" : "Pause"}
               </button>
-              <button class="btn-danger rounded-full px-4 py-2 text-[11.5px] font-medium" onclick={cancelWrite} title="Stop (Esc)">
+              <button class="btn-danger rounded-full px-4 py-2 text-[11.5px] font-medium" onclick={cancelWrite} aria-label="Stop typing">
                 <Icon name="stop" size={11} fill="currentColor" />
                 Stop
               </button>

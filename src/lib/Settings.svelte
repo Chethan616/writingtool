@@ -91,7 +91,7 @@
         <span class="opacity-75"><Icon name={s.icon} size={13} /></span>
         {s.label}
         {#if s.id === "api" && !settings.apiKey && loaded}
-          <span class="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" title="API key not set"></span>
+          <span class="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" aria-label="API key not set"></span>
         {/if}
       </button>
     {/each}

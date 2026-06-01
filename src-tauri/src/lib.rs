@@ -145,21 +145,85 @@ fn resume_typing(state: State<'_, AppState>) {
     { let _ = state; }
 }
 
+/// Toggle / show / hide are now **CSS-only** at the frontend level. The OS
+/// window is kept always-on (`win.show()` once at startup) so the topmost
+/// z-order never changes — that's what was making the Windows taskbar pop
+/// over a fullscreen Chrome / video and look like "fullscreen exited."
+/// These commands just emit events; the overlay component flips an
+/// `isHidden` state and the click-through is handled via WS_EX_TRANSPARENT.
 #[tauri::command]
 fn toggle_overlay(app: AppHandle) -> Result<(), String> {
-    do_toggle(&app).map_err(|e| e.to_string())
+    app.emit_to("overlay", "overlay://toggle", ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn show_overlay(app: AppHandle) -> Result<(), String> {
+    app.emit_to("overlay", "overlay://show", ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn hide_overlay(app: AppHandle) -> Result<(), String> {
+    app.emit_to("overlay", "overlay://hide", ()).map_err(|e| e.to_string())
+}
+
+/// Grab keyboard focus for the overlay input without changing the OS
+/// foreground. Called by the frontend when the overlay transitions from
+/// hidden → shown so the user can type immediately. On non-Windows this is
+/// a no-op; native focus comes from DOM `inputEl.focus()`.
+#[tauri::command]
+fn focus_overlay(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("overlay") {
+        #[cfg(windows)]
+        {
+            if let Ok(hwnd) = win.hwnd() {
+                win32::focus_overlay_no_steal(hwnd.0 as isize);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = win.set_focus();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn start_kbd_capture() -> Result<(), String> {
+    #[cfg(windows)]
+    win32::set_capture_active(true);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_kbd_capture() -> Result<(), String> {
+    #[cfg(windows)]
+    win32::set_capture_active(false);
+    Ok(())
+}
+
+/// Toggle the OS-level click-through behavior of the overlay window. When
+/// the frontend hides the overlay (CSS), it calls this with `clickable=false`
+/// so the (now-invisible) overlay window doesn't eat clicks that the user
+/// expects to hit the app behind it.
+#[tauri::command]
+fn set_overlay_clickable(app: AppHandle, clickable: bool) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("overlay") {
+        #[cfg(windows)]
+        {
+            if let Ok(hwnd) = win.hwnd() {
+                win32::set_overlay_clickable(hwnd.0 as isize, clickable);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (win, clickable);
+        }
+    }
+    Ok(())
 }
 
 fn do_toggle(app: &AppHandle) -> tauri::Result<()> {
-    if let Some(win) = app.get_webview_window("overlay") {
-        if win.is_visible()? {
-            win.hide()?;
-        } else {
-            win.show()?;
-            win.set_focus().ok();
-            app.emit("overlay://focus-input", ()).ok();
-        }
-    }
+    app.emit_to("overlay", "overlay://toggle", ())?;
     Ok(())
 }
 
@@ -373,13 +437,30 @@ pub fn run() {
                 });
             }
 
-            // ---- Stealth on overlay ----
+            // ---- Stealth + always-on at OS level ----
+            // The overlay window is created hidden via tauri.conf.json then
+            // shown ONCE here, after stealth flags are applied. From this
+            // point onward the OS-level z-order never changes — show/hide
+            // is purely a CSS class flip in the frontend. This is what
+            // prevents the Windows taskbar from popping over fullscreen
+            // apps every time the user toggles the overlay.
             #[cfg(windows)]
             {
                 if let Some(overlay) = handle.get_webview_window("overlay") {
                     if let Ok(hwnd) = overlay.hwnd() {
                         let _ = win32::make_stealth(hwnd.0 as isize);
+                        // Start click-through ON — the overlay boots in the
+                        // hidden state, so clicks must pass through it.
+                        win32::set_overlay_clickable(hwnd.0 as isize, false);
                     }
+                    let _ = win32::install_kbd_hook(handle.clone());
+                    let _ = overlay.show();
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                if let Some(overlay) = handle.get_webview_window("overlay") {
+                    let _ = overlay.show();
                 }
             }
 
@@ -397,6 +478,12 @@ pub fn run() {
             pause_typing,
             resume_typing,
             toggle_overlay,
+            show_overlay,
+            hide_overlay,
+            focus_overlay,
+            start_kbd_capture,
+            stop_kbd_capture,
+            set_overlay_clickable,
             show_main,
             quit_app,
             screenshot_full,

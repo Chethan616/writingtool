@@ -181,8 +181,36 @@ export function onTypingProgress(cb: (p: TypingProgress) => void): Promise<Unlis
 
 // ───── Misc ─────────────────────────────────────────────
 
+export async function startKbdCapture() { return invoke<void>("start_kbd_capture"); }
+export async function stopKbdCapture() { return invoke<void>("stop_kbd_capture"); }
+
+export type CapturedKey = {
+  vk: number; scan: number;
+  shift: boolean; ctrl: boolean; alt: boolean;
+  text: string | null;
+};
+export function onKbdCaptureKey(cb: (k: CapturedKey) => void): Promise<UnlistenFn> {
+  return listen<CapturedKey>("kbd-capture://key", (e) => cb(e.payload));
+}
+
 export async function toggleOverlay() { return invoke<void>("toggle_overlay"); }
+export async function showOverlay() { return invoke<void>("show_overlay"); }
+export async function hideOverlay() { return invoke<void>("hide_overlay"); }
+export async function focusOverlay() { return invoke<void>("focus_overlay"); }
+export async function setOverlayClickable(clickable: boolean) {
+  return invoke<void>("set_overlay_clickable", { clickable });
+}
 export async function showMain() { return invoke<void>("show_main"); }
+
+export function onOverlayToggle(cb: () => void): Promise<UnlistenFn> {
+  return listen("overlay://toggle", () => cb());
+}
+export function onOverlayShow(cb: () => void): Promise<UnlistenFn> {
+  return listen("overlay://show", () => cb());
+}
+export function onOverlayHide(cb: () => void): Promise<UnlistenFn> {
+  return listen("overlay://hide", () => cb());
+}
 export async function applyStealth() { return invoke<void>("apply_stealth"); }
 export async function quitApp() { return invoke<void>("quit_app"); }
 
