@@ -36,7 +36,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetForegroundWindow, GetWindowLongPtrW, GetWindowThreadProcessId,
     IsWindowVisible, SetWindowDisplayAffinity, SetWindowLongPtrW, SetWindowPos,
     SetWindowsHookExW, ShowWindow,
-    GWL_EXSTYLE, HC_ACTION, HWND_TOPMOST, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN,
+    GWL_EXSTYLE, HC_ACTION, HWND_TOPMOST, KBDLLHOOKSTRUCT, LLKHF_ALTDOWN, LLKHF_INJECTED,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE,
     WDA_EXCLUDEFROMCAPTURE, WH_KEYBOARD_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
@@ -173,6 +173,12 @@ unsafe extern "system" fn kbd_hook_proc(code: i32, wparam: WPARAM, lparam: LPARA
     }
 
     let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+    
+    // Pass through injected keys (e.g. from SendInput when we are typing).
+    if (info.flags.0 & LLKHF_INJECTED.0) != 0 {
+        return CallNextHookEx(None, code, wparam, lparam);
+    }
+    
     let vk = info.vkCode;
     let scan = info.scanCode;
 

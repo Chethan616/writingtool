@@ -32,9 +32,6 @@
     showOverlay,
     hideOverlay,
     focusOverlay,
-    startKbdCapture,
-    stopKbdCapture,
-    onKbdCaptureKey,
     setOverlayClickable,
     onOverlayToggle,
     onOverlayShow,
@@ -114,11 +111,6 @@
   async function applyHiddenState(hidden: boolean) {
     isHidden = hidden;
     await setOverlayClickable(!hidden);
-    if (!hidden) {
-      await startKbdCapture();   // hook will route keys to us
-    } else {
-      await stopKbdCapture();
-    }
   }
 
   let historyOpen = $state(false);
@@ -129,15 +121,15 @@
   // idle → countdown → typing → (paused) → resuming(3s) → typing → done
   type WritePhase = "idle" | "countdown" | "typing" | "resuming";
   let writePhase = $state<WritePhase>("idle");
-  let countdownSec = $state(0);
+  let countdownLeftMs = $state(0);
   let countdownStartSec = $state(3);
+  let countdownRafId: number | null = null;
   let typingCur = $state(0);
   let typingTotal = $state(0);
   let typingPaused = $state(false);
-  let countdownTimer: ReturnType<typeof setInterval> | null = null;
-  let resumeTimer: ReturnType<typeof setInterval> | null = null;
-  let resumeSec = $state(0);
-  const RESUME_DELAY = 3;
+  let resumeLeftMs = $state(0);
+  let resumeRafId: number | null = null;
+  const RESUME_DELAY_MS = 3000;
   let pendingTypeText = $state("");
 
   const cancelled = new Set<string>();
@@ -186,22 +178,6 @@
     unlisteners.push(await onOverlayToggle(() => void applyHiddenState(!isHidden)));
     unlisteners.push(await onOverlayShow(() => void applyHiddenState(false)));
     unlisteners.push(await onOverlayHide(() => void applyHiddenState(true)));
-    
-    unlisteners.push(await onKbdCaptureKey((k) => {
-      // Esc → hide
-      if (k.vk === 0x1B) { void applyHiddenState(true); return; }
-      // Enter (no Shift) → submit
-      if (k.vk === 0x0D && !k.shift) { void send(); return; }
-      // Backspace → trim last char of `input`
-      if (k.vk === 0x08) { input = input.slice(0, -1); return; }
-      // Ctrl+V → paste from clipboard
-      if (k.ctrl && (k.vk === 0x56)) {
-        void navigator.clipboard.readText().then((t) => { input += t; });
-        return;
-      }
-      // Plain text from ToUnicodeEx
-      if (k.text) input += k.text;
-    }));
 
     unlisteners.push(await onSettingsUpdated(async () => {
       settings = await loadSettings();
@@ -267,8 +243,8 @@
   onDestroy(() => {
     unlisteners.forEach((u) => u());
     revokeAllPreviews();
-    if (countdownTimer) clearInterval(countdownTimer);
-    if (resumeTimer) clearInterval(resumeTimer);
+    if (countdownRafId !== null) cancelAnimationFrame(countdownRafId);
+    if (resumeRafId !== null) cancelAnimationFrame(resumeRafId);
   });
 
   function revokeAllPreviews() {
@@ -625,55 +601,76 @@
     }
     writePhase = "countdown";
     countdownStartSec = sec;
-    countdownSec = sec;
-    countdownTimer = setInterval(async () => {
-      countdownSec -= 1;
-      if (countdownSec <= 0) {
-        if (countdownTimer) clearInterval(countdownTimer);
-        countdownTimer = null;
+    countdownLeftMs = sec * 1000;
+    let lastTime = performance.now();
+    
+    const tick = (now: number) => {
+      const delta = now - lastTime;
+      lastTime = now;
+      countdownLeftMs -= delta;
+      
+      if (countdownLeftMs <= 0) {
+        countdownLeftMs = 0;
+        countdownRafId = null;
         if (writePhase !== "countdown") return;
         writePhase = "typing";
         if (!settings) return;
-        try { await typeText(pendingTypeText, settings.delayMs, settings.jitterMs, settings.humanMode); }
-        catch (e) { console.error(e); writePhase = "idle"; }
+        typeText(pendingTypeText, settings.delayMs, settings.jitterMs, settings.humanMode).catch(e => {
+          console.error(e);
+          writePhase = "idle";
+        });
+      } else {
+        countdownRafId = requestAnimationFrame(tick);
       }
-    }, 1000);
+    };
+    
+    if (countdownRafId !== null) cancelAnimationFrame(countdownRafId);
+    countdownRafId = requestAnimationFrame(tick);
   }
 
   function cancelWrite() {
-    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-    if (resumeTimer)    { clearInterval(resumeTimer);    resumeTimer    = null; }
+    if (countdownRafId !== null) { cancelAnimationFrame(countdownRafId); countdownRafId = null; }
+    if (resumeRafId !== null)    { cancelAnimationFrame(resumeRafId);    resumeRafId    = null; }
     if (writePhase === "typing" || writePhase === "resuming") void cancelTyping();
     writePhase = "idle";
-    countdownSec = 0;
-    resumeSec = 0;
+    countdownLeftMs = 0;
+    resumeLeftMs = 0;
   }
 
-  function togglePause() {
+  function requestPause() {
     if (writePhase === "typing" && !typingPaused) {
       void pauseTyping();
-      return;
     }
-    if ((writePhase === "typing" && typingPaused) || writePhase === "resuming") {
-      // Start a 3s resume countdown so the user can refocus their target field.
-      if (writePhase === "resuming") return; // already counting
+  }
+
+  function requestResume() {
+    if (writePhase === "typing" && typingPaused) {
       writePhase = "resuming";
-      resumeSec = RESUME_DELAY;
-      if (resumeTimer) clearInterval(resumeTimer);
-      resumeTimer = setInterval(() => {
-        resumeSec -= 1;
-        if (resumeSec <= 0) {
-          if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
+      resumeLeftMs = RESUME_DELAY_MS;
+      let lastTime = performance.now();
+      
+      const tick = (now: number) => {
+        const delta = now - lastTime;
+        lastTime = now;
+        resumeLeftMs -= delta;
+        if (resumeLeftMs <= 0) {
+          resumeLeftMs = 0;
+          resumeRafId = null;
           writePhase = "typing";
           void resumeTyping();
+        } else {
+          resumeRafId = requestAnimationFrame(tick);
         }
-      }, 1000);
+      };
+      
+      if (resumeRafId !== null) cancelAnimationFrame(resumeRafId);
+      resumeRafId = requestAnimationFrame(tick);
     }
   }
 
   function cancelResume() {
-    if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
-    resumeSec = 0;
+    if (resumeRafId !== null) { cancelAnimationFrame(resumeRafId); resumeRafId = null; }
+    resumeLeftMs = 0;
     writePhase = "typing"; // still paused
   }
 
@@ -709,7 +706,10 @@
       case "h": e.preventDefault(); historyOpen = !historyOpen; break;
       case "p":
         if ((writePhase === "typing" || writePhase === "resuming") && e.shiftKey) {
-          e.preventDefault(); togglePause();
+          e.preventDefault();
+          if (writePhase === "resuming") cancelResume();
+          else if (typingPaused) requestResume();
+          else requestPause();
         }
         break;
       case ".": e.preventDefault(); if (activeRequest) stopGeneration(); break;
@@ -767,11 +767,13 @@
   // ───── derived ─────
   const typingPct = $derived(typingTotal > 0 ? Math.min(100, Math.round((typingCur / typingTotal) * 100)) : 0);
   const countdownPct = $derived(countdownStartSec > 0
-    ? Math.max(0, Math.min(100, ((countdownStartSec - countdownSec) / countdownStartSec) * 100))
+    ? Math.max(0, Math.min(100, ((countdownStartSec * 1000 - countdownLeftMs) / (countdownStartSec * 1000)) * 100))
     : 0);
-  const resumePct = $derived(RESUME_DELAY > 0
-    ? Math.max(0, Math.min(100, ((RESUME_DELAY - resumeSec) / RESUME_DELAY) * 100))
+  const resumePct = $derived(RESUME_DELAY_MS > 0
+    ? Math.max(0, Math.min(100, ((RESUME_DELAY_MS - resumeLeftMs) / RESUME_DELAY_MS) * 100))
     : 0);
+  const countdownSec = $derived(Math.ceil(countdownLeftMs / 1000));
+  const resumeSec = $derived(Math.ceil(resumeLeftMs / 1000));
 </script>
 
 <svelte:window onkeydown={onKey} onpaste={onPaste} />
@@ -1158,10 +1160,17 @@
               </div>
             </div>
             <div class="flex gap-2 shrink-0">
-              <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={togglePause} aria-label={typingPaused ? "Resume typing" : "Pause typing"}>
-                <Icon name={typingPaused ? "play" : "pause"} size={11} fill="currentColor" />
-                {typingPaused ? "Resume" : "Pause"}
-              </button>
+              {#if typingPaused}
+                <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={requestResume} aria-label="Resume typing">
+                  <Icon name="play" size={11} fill="currentColor" />
+                  Resume
+                </button>
+              {:else}
+                <button class="btn rounded-full px-4 py-2 text-[11.5px]" onclick={requestPause} aria-label="Pause typing">
+                  <Icon name="pause" size={11} fill="currentColor" />
+                  Pause
+                </button>
+              {/if}
               <button class="btn-danger rounded-full px-4 py-2 text-[11.5px] font-medium" onclick={cancelWrite} aria-label="Stop typing">
                 <Icon name="stop" size={11} fill="currentColor" />
                 Stop
