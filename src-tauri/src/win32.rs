@@ -342,9 +342,16 @@ impl TypingState {
 
         let mut rng = rand::thread_rng();
         let mut last_paused = false;
+        let mut target_hwnd = unsafe { GetForegroundWindow() };
 
         for (i, ch) in chars.iter().enumerate() {
             if self.cancel.load(Ordering::SeqCst) { break; }
+
+            // Auto-pause if the user clicked away to another window
+            let current_hwnd = unsafe { GetForegroundWindow() };
+            if current_hwnd.0 != target_hwnd.0 && !current_hwnd.0.is_null() {
+                self.pause.store(true, Ordering::SeqCst);
+            }
 
             // pause loop
             while self.pause.load(Ordering::SeqCst) {
@@ -354,6 +361,8 @@ impl TypingState {
                     *self.active.lock() = false;
                     return Ok(());
                 }
+                // Constantly track focus so when we resume, we lock onto the new target
+                target_hwnd = unsafe { GetForegroundWindow() };
             }
             if last_paused { on_progress(i, total, false); last_paused = false; }
 
